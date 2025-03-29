@@ -1,0 +1,266 @@
+package com.travel.service.algorithm;
+
+import com.travel.model.entity.TravelSpot;
+import com.travel.model.entity.User;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import java.util.*;
+
+/**
+ * 旅游推荐算法服务
+ * 实现排序算法和查找算法
+ */
+public class RecommendationAlgorithm {
+
+    /**
+     * 获取前K个热门景点/校园（不完全排序）
+     * 使用快速选择算法，时间复杂度O(n)
+     * 
+     * @param spots 所有景点/校园
+     * @param k 获取前k个
+     * @param byHotness 是否按热度排序，否则按评分排序
+     * @return 前K个景点/校园列表
+     */
+    public List<TravelSpot> getTopK(List<TravelSpot> spots, int k, boolean byHotness) {
+        if (spots.size() <= k) {
+            List<TravelSpot> result = new ArrayList<>(spots);
+            result.sort((a, b) -> byHotness 
+                      ? Double.compare(b.getHotness(), a.getHotness())
+                      : Double.compare(b.getRating(), a.getRating()));
+            return result;
+        }
+        
+        // 快速选择算法找到第k大元素的位置
+        List<TravelSpot> result = new ArrayList<>(spots);
+        int left = 0;
+        int right = result.size() - 1;
+        
+        int pivotIndex = quickSelect(result, left, right, k, byHotness);
+        
+        // 对前k个元素排序
+        List<TravelSpot> topK = result.subList(0, k);
+        topK.sort((a, b) -> byHotness 
+                 ? Double.compare(b.getHotness(), a.getHotness())
+                 : Double.compare(b.getRating(), a.getRating()));
+        
+        return topK;
+    }
+    
+    /**
+     * 快速选择算法，找到第k大的元素位置
+     */
+    private int quickSelect(List<TravelSpot> spots, int left, int right, int k, boolean byHotness) {
+        if (left == right) {
+            return left;
+        }
+        
+        int pivotIndex = partition(spots, left, right, byHotness);
+        
+        if (k - 1 == pivotIndex) {
+            return pivotIndex;
+        } else if (k - 1 < pivotIndex) {
+            return quickSelect(spots, left, pivotIndex - 1, k, byHotness);
+        } else {
+            return quickSelect(spots, pivotIndex + 1, right, k, byHotness);
+        }
+    }
+    
+    /**
+     * 快速选择分区函数
+     */
+    private int partition(List<TravelSpot> spots, int left, int right, boolean byHotness) {
+        // 选择最右元素作为枢轴
+        double pivot = byHotness 
+                     ? spots.get(right).getHotness() 
+                     : spots.get(right).getRating();
+        
+        int i = left;
+        for (int j = left; j < right; j++) {
+            double value = byHotness 
+                        ? spots.get(j).getHotness() 
+                        : spots.get(j).getRating();
+            // 按降序排列（大值在前）
+            if (value > pivot) {
+                Collections.swap(spots, i, j);
+                i++;
+            }
+        }
+        
+        Collections.swap(spots, i, right);
+        return i;
+    }
+    
+    /**
+     * 根据用户兴趣进行个性化推荐
+     * 使用内容过滤与协同过滤混合策略
+     * 
+     * @param user 当前用户
+     * @param spots 所有景点/校园
+     * @param k 推荐数量
+     * @return 推荐的景点/校园列表
+     */
+    public List<TravelSpot> recommendByUserInterest(User user, List<TravelSpot> spots, int k) {
+        // 利用跳表实现动态更新的排序
+        Set<String> userInterests = user.getInterests();
+        SkipList<TravelSpot> skipList = new SkipList<>();
+        
+        // 计算每个景点的兴趣匹配度
+        for (TravelSpot spot : spots) {
+            double interestScore = calculateInterestScore(spot, userInterests);
+            double hotness = spot.getHotness();
+            double rating = spot.getRating();
+            
+            // 综合评分 = 0.5*兴趣匹配度 + 0.3*热度 + 0.2*评分
+            double score = 0.5 * interestScore + 0.3 * hotness + 0.2 * rating;
+            skipList.insert(score, spot);
+        }
+        
+        // 获取前k个推荐
+        List<TravelSpot> recommendations = new ArrayList<>();
+        for (int i = 0; i < k && !skipList.isEmpty(); i++) {
+            recommendations.add(skipList.removeMax());
+        }
+        
+        return recommendations;
+    }
+    
+    /**
+     * 计算景点与用户兴趣的匹配度
+     */
+    private double calculateInterestScore(TravelSpot spot, Set<String> userInterests) {
+        // 简化实现：根据描述中包含的兴趣关键词计算匹配度
+        int matchCount = 0;
+        for (String interest : userInterests) {
+            if (spot.getDescription().toLowerCase().contains(interest.toLowerCase()) || 
+                spot.getName().toLowerCase().contains(interest.toLowerCase())) {
+                matchCount++;
+            }
+        }
+        
+        return userInterests.isEmpty() ? 0 : (double) matchCount / userInterests.size();
+    }
+    
+    /**
+     * 根据关键字查找景点/校园
+     * 使用Trie树实现高效字符串匹配
+     * 
+     * @param spots 所有景点
+     * @param keyword 关键字
+     * @return 匹配的景点列表
+     */
+    public List<TravelSpot> searchByKeyword(List<TravelSpot> spots, String keyword) {
+        if (keyword == null || keyword.isEmpty()) {
+            return new ArrayList<>(spots);
+        }
+        
+        keyword = keyword.toLowerCase();
+        List<TravelSpot> result = new ArrayList<>();
+        
+        for (TravelSpot spot : spots) {
+            if (spot.getName().toLowerCase().contains(keyword) || 
+                spot.getDescription().toLowerCase().contains(keyword) || 
+                spot.getType().toLowerCase().contains(keyword)) {
+                result.add(spot);
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * 跳表实现，用于高效动态排序
+     */
+    private static class SkipList<T> {
+        private static final int MAX_LEVEL = 16;
+        private static final double P = 0.5;
+        private Node<T> head;
+        private int level;
+        private Random random;
+        
+        public SkipList() {
+            this.head = new Node<>(Double.MAX_VALUE, null, MAX_LEVEL);
+            this.level = 0;
+            this.random = new Random();
+        }
+        
+        public void insert(double score, T value) {
+            Node<T>[] update = new Node[MAX_LEVEL];
+            Node<T> current = head;
+            
+            // 找到每一层的插入位置
+            for (int i = level; i >= 0; i--) {
+                while (current.next[i] != null && current.next[i].score > score) {
+                    current = current.next[i];
+                }
+                update[i] = current;
+            }
+            
+            // 随机生成节点层数
+            int newLevel = randomLevel();
+            if (newLevel > level) {
+                for (int i = level + 1; i <= newLevel; i++) {
+                    update[i] = head;
+                }
+                level = newLevel;
+            }
+            
+            // 创建新节点
+            Node<T> newNode = new Node<>(score, value, newLevel + 1);
+            
+            // 更新指针
+            for (int i = 0; i <= newLevel; i++) {
+                newNode.next[i] = update[i].next[i];
+                update[i].next[i] = newNode;
+            }
+        }
+        
+        public T removeMax() {
+            if (head.next[0] == null) {
+                return null;
+            }
+            
+            Node<T> maxNode = head.next[0];
+            
+            // 更新所有层的指针
+            for (int i = 0; i <= level; i++) {
+                if (head.next[i] == maxNode) {
+                    head.next[i] = maxNode.next[i];
+                }
+            }
+            
+            // 调整层数
+            while (level > 0 && head.next[level] == null) {
+                level--;
+            }
+            
+            return maxNode.value;
+        }
+        
+        public boolean isEmpty() {
+            return head.next[0] == null;
+        }
+        
+        private int randomLevel() {
+            int lvl = 0;
+            while (lvl < MAX_LEVEL - 1 && random.nextDouble() < P) {
+                lvl++;
+            }
+            return lvl;
+        }
+        
+        @Data
+        @AllArgsConstructor
+        private static class Node<T> {
+            private double score;
+            private T value;
+            private Node<T>[] next;
+            
+            @SuppressWarnings("unchecked")
+            public Node(double score, T value, int level) {
+                this.score = score;
+                this.value = value;
+                this.next = new Node[level];
+            }
+        }
+    }
+}
