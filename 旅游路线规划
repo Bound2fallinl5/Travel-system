@@ -1,0 +1,311 @@
+package com.travel.service.algorithm;
+
+import com.travel.model.entity.Building;
+import com.travel.model.entity.Road;
+import com.travel.model.entity.TravelSpot;
+
+import java.util.*;
+
+/**
+ * 旅游路线规划算法
+ * 实现各种最短路径算法
+ */
+public class RoutePlanningAlgorithm {
+
+    /**
+     * 图节点类
+     */
+    private static class Node {
+        Building building;
+        double distance; // 从起点到当前节点的距离
+        List<Road> path; // 从起点到当前节点的路径
+        
+        public Node(Building building, double distance, List<Road> path) {
+            this.building = building;
+            this.distance = distance;
+            this.path = path;
+        }
+    }
+    
+    /**
+     * 构建邻接表表示的图
+     */
+    private Map<Building, List<Road>> buildGraph(TravelSpot spot) {
+        Map<Building, List<Road>> graph = new HashMap<>();
+        
+        // 初始化图
+        for (Building building : spot.getBuildings()) {
+            graph.put(building, new ArrayList<>());
+        }
+        
+        // 添加边
+        for (Road road : spot.getRoads()) {
+            graph.get(road.getStartBuilding()).add(road);
+            
+            // 如果是双向道路，添加反向边
+            Road reverseRoad = new Road();
+            reverseRoad.setId(road.getId());
+            reverseRoad.setStartBuilding(road.getEndBuilding());
+            reverseRoad.setEndBuilding(road.getStartBuilding());
+            reverseRoad.setDistance(road.getDistance());
+            reverseRoad.setCongestion(road.getCongestion());
+            reverseRoad.setIdealSpeed(road.getIdealSpeed());
+            reverseRoad.setAllowBike(road.isAllowBike());
+            reverseRoad.setAllowCar(road.isAllowCar());
+            
+            graph.get(road.getEndBuilding()).add(reverseRoad);
+        }
+        
+        return graph;
+    }
+    
+    /**
+     * 单目标最短路径算法 - Dijkstra算法
+     * 
+     * @param spot 景区/校园
+     * @param start 起点
+     * @param end 终点
+     * @param strategy 路径策略(distance, time, transport)
+     * @param transportMode 交通方式(walk, bike, car)
+     * @return 最短路径
+     */
+    public List<Road> shortestPath(TravelSpot spot, Building start, Building end, 
+                                String strategy, String transportMode) {
+        Map<Building, List<Road>> graph = buildGraph(spot);
+        
+        // 使用优先队列实现Dijkstra算法
+        PriorityQueue<Node> queue = new PriorityQueue<>(
+            Comparator.comparingDouble(node -> node.distance)
+        );
+        
+        // 已访问节点集合
+        Set<Building> visited = new HashSet<>();
+        
+        // 初始化起点
+        queue.offer(new Node(start, 0, new ArrayList<>()));
+        
+        while (!queue.isEmpty()) {
+            Node current = queue.poll();
+            Building currentBuilding = current.building;
+            
+            // 如果到达终点，返回路径
+            if (currentBuilding.equals(end)) {
+                return current.path;
+            }
+            
+            // 如果已访问过该节点，跳过
+            if (visited.contains(currentBuilding)) {
+                continue;
+            }
+            
+            // 标记为已访问
+            visited.add(currentBuilding);
+            
+            // 遍历所有相邻边
+            for (Road road : graph.get(currentBuilding)) {
+                // 检查交通方式是否允许
+                if (!isTransportAllowed(road, transportMode)) {
+                    continue;
+                }
+                
+                Building nextBuilding = road.getEndBuilding();
+                
+                // 如果已访问过，跳过
+                if (visited.contains(nextBuilding)) {
+                    continue;
+                }
+                
+                // 计算边的权重
+                double weight = calculateWeight(road, strategy, transportMode);
+                double newDistance = current.distance + weight;
+                
+                // 创建新路径
+                List<Road> newPath = new ArrayList<>(current.path);
+                newPath.add(road);
+                
+                // 添加到队列
+                queue.offer(new Node(nextBuilding, newDistance, newPath));
+            }
+        }
+        
+        // 没有找到路径
+        return Collections.emptyList();
+    }
+    
+    /**
+     * 计算边的权重，根据不同策略
+     */
+    private double calculateWeight(Road road, String strategy, String transportMode) {
+        switch (strategy) {
+            case "distance":
+                return road.getDistance();
+            case "time":
+                // 时间 = 距离 / (拥挤度 * 理想速度)
+                return road.getDistance() / (road.getCongestion() * road.getIdealSpeed());
+            case "transport":
+                // 根据交通工具计算时间
+                double speed = getTransportSpeed(transportMode, road);
+                return road.getDistance() / (road.getCongestion() * speed);
+            default:
+                return road.getDistance();
+        }
+    }
+    
+    /**
+     * 获取交通工具速度
+     */
+    private double getTransportSpeed(String transportMode, Road road) {
+        switch (transportMode) {
+            case "bike":
+                return road.getIdealSpeed() * 2.5; // 自行车速度
+            case "car":
+                return road.getIdealSpeed() * 4.0; // 电瓶车速度
+            default:
+                return road.getIdealSpeed(); // 步行速度
+        }
+    }
+    
+    /**
+     * 检查交通方式是否允许
+     */
+    private boolean isTransportAllowed(Road road, String transportMode) {
+        switch (transportMode) {
+            case "bike":
+                return road.isAllowBike();
+            case "car":
+                return road.isAllowCar();
+            default:
+                return true; // 步行总是允许
+        }
+    }
+    
+    /**
+     * 多点游览路径规划 (改进的旅行商问题算法)
+     * 使用遗传算法求解
+     * 
+     * @param spot 景区/校园
+     * @param start 起点/终点(循环路径)
+     * @param waypoints 途经点
+     * @param strategy 路径策略
+     * @param transportMode 交通方式
+     * @return 最优游览路径
+     */
+    public List<Road> multiPointRoute(TravelSpot spot, Building start, 
+                                   List<Building> waypoints, String strategy, 
+                                   String transportMode) {
+        // 如果途经点少于2个，直接使用普通最短路径
+        if (waypoints.size() < 2) {
+            if (waypoints.isEmpty()) {
+                return Collections.emptyList();
+            } else {
+                List<Road> path1 = shortestPath(spot, start, waypoints.get(0), strategy, transportMode);
+                List<Road> path2 = shortestPath(spot, waypoints.get(0), start, strategy, transportMode);
+                path1.addAll(path2);
+                return path1;
+            }
+        }
+        
+        // 预计算所有点对之间的最短路径
+        Map<Building, Map<Building, List<Road>>> allPaths = new HashMap<>();
+        List<Building> allPoints = new ArrayList<>(waypoints);
+        allPoints.add(start);
+        
+        for (Building from : allPoints) {
+            allPaths.put(from, new HashMap<>());
+            for (Building to : allPoints) {
+                if (!from.equals(to)) {
+                    List<Road> path = shortestPath(spot, from, to, strategy, transportMode);
+                    allPaths.get(from).put(to, path);
+                }
+            }
+        }
+        
+        // 使用遗传算法求解TSP
+        return solveTSPWithGeneticAlgorithm(allPoints, allPaths, start);
+    }
+    
+    /**
+     * 使用遗传算法求解TSP
+     */
+    private List<Road> solveTSPWithGeneticAlgorithm(List<Building> allPoints, 
+                                                 Map<Building, Map<Building, List<Road>>> allPaths, 
+                                                 Building start) {
+        final int POPULATION_SIZE = 50;
+        final int MAX_GENERATIONS = 100;
+        final double MUTATION_RATE = 0.1;
+        final double CROSSOVER_RATE = 0.7;
+        
+        // 移除起点，因为它是固定的
+        List<Building> points = new ArrayList<>(allPoints);
+        points.remove(start);
+        
+        // 初始化种群
+        List<List<Building>> population = new ArrayList<>();
+        for (int i = 0; i < POPULATION_SIZE; i++) {
+            List<Building> chromosome = new ArrayList<>(points);
+            Collections.shuffle(chromosome);
+            population.add(chromosome);
+        }
+        
+        // 进化
+        for (int generation = 0; generation < MAX_GENERATIONS; generation++) {
+            // 计算适应度
+            Map<List<Building>, Double> fitness = new HashMap<>();
+            for (List<Building> chromosome : population) {
+                fitness.put(chromosome, calculateFitness(chromosome, start, allPaths));
+            }
+            
+            // 选择
+            List<List<Building>> newPopulation = new ArrayList<>();
+            for (int i = 0; i < POPULATION_SIZE; i++) {
+                List<Building> parent1 = selection(population, fitness);
+                List<Building> parent2 = selection(population, fitness);
+                
+                // 交叉
+                List<Building> offspring;
+                if (Math.random() < CROSSOVER_RATE) {
+                    offspring = crossover(parent1, parent2);
+                } else {
+                    offspring = new ArrayList<>(parent1);
+                }
+                
+                // 变异
+                if (Math.random() < MUTATION_RATE) {
+                    mutate(offspring);
+                }
+                
+                newPopulation.add(offspring);
+            }
+            
+            population = newPopulation;
+        }
+        
+        // 找出最优解
+        List<Building> bestRoute = null;
+        double bestFitness = Double.MAX_VALUE;
+        
+        for (List<Building> chromosome : population) {
+            double fitness = calculateFitness(chromosome, start, allPaths);
+            if (fitness < bestFitness) {
+                bestFitness = fitness;
+                bestRoute = chromosome;
+            }
+        }
+        
+        // 构建完整路径
+        List<Road> fullPath = new ArrayList<>();
+        Building current = start;
+        
+        for (Building next : bestRoute) {
+            fullPath.addAll(allPaths.get(current).get(next));
+            current = next;
+        }
+        
+        // 添加返回起点的路径
+        fullPath.addAll(allPaths.get(current).get(start));
+        
+        return fullPath;
+    }
+    
+    /**
+     *
