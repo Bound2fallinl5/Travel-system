@@ -1,0 +1,535 @@
+package com.travel.model;
+
+import java.util.*;
+
+// 位置类，用于表示地点的坐标
+public class Location {
+    private double x;
+    private double y;
+    
+    public Location(double x, double y) {
+        this.x = x;
+        this.y = y;
+    }
+    
+    public double getX() {
+        return x;
+    }
+    
+    public double getY() {
+        return y;
+    }
+    
+    // 计算两点之间的直线距离
+    public double distanceTo(Location other) {
+        return Math.sqrt(Math.pow(this.x - other.x, 2) + Math.pow(this.y - other.y, 2));
+    }
+}
+
+// 场所类，抽象类，作为景点和设施的父类
+public abstract class Place {
+    private int id;
+    private String name;
+    private String description;
+    private Location location;
+    private double rating; // 评分，满分5分
+    private int visitCount; // 访问量/热度
+    
+    public Place(int id, String name, String description, Location location) {
+        this.id = id;
+        this.name = name;
+        this.description = description;
+        this.location = location;
+        this.rating = 0.0;
+        this.visitCount = 0;
+    }
+
+    // Getters and setters
+    public int getId() {
+        return id;
+    }
+    
+    public String getName() {
+        return name;
+    }
+    
+    public String getDescription() {
+        return description;
+    }
+    
+    public Location getLocation() {
+        return location;
+    }
+    
+    public double getRating() {
+        return rating;
+    }
+    
+    public void setRating(double rating) {
+        this.rating = rating;
+    }
+    
+    public int getVisitCount() {
+        return visitCount;
+    }
+    
+    public void incrementVisitCount() {
+        this.visitCount++;
+    }
+}
+
+// 景点类
+public class Attraction extends Place {
+    private String category; // 景点类别，如"自然风景"、"历史文化"等
+    private List<String> keywords; // 关键词列表
+    
+    public Attraction(int id, String name, String description, Location location, String category) {
+        super(id, name, description, location);
+        this.category = category;
+        this.keywords = new ArrayList<>();
+    }
+    
+    public String getCategory() {
+        return category;
+    }
+    
+    public List<String> getKeywords() {
+        return keywords;
+    }
+    
+    public void addKeyword(String keyword) {
+        this.keywords.add(keyword);
+    }
+}
+
+// 设施类
+public class Facility extends Place {
+    private String type; // 设施类型，如"餐厅"、"洗手间"、"商店"等
+    
+    public Facility(int id, String name, String description, Location location, String type) {
+        super(id, name, description, location);
+        this.type = type;
+    }
+    
+    public String getType() {
+        return type;
+    }
+}
+
+// 景区/校园类
+public class TouristArea {
+    private int id;
+    private String name;
+    private String type; // "景区"或"校园"
+    private String description;
+    private Location location;
+    private List<Attraction> attractions; // 景点列表
+    private List<Facility> facilities; // 设施列表
+    private Map<Integer, Map<Integer, Road>> roads; // 道路图，邻接表表示
+    private double rating; // 评分，满分5分
+    private int visitCount; // 访问量/热度
+    
+    public TouristArea(int id, String name, String type, String description, Location location) {
+        this.id = id;
+        this.name = name;
+        this.type = type;
+        this.description = description;
+        this.location = location;
+        this.attractions = new ArrayList<>();
+        this.facilities = new ArrayList<>();
+        this.roads = new HashMap<>();
+        this.rating = 0.0;
+        this.visitCount = 0;
+    }
+    
+    // 添加景点
+    public void addAttraction(Attraction attraction) {
+        attractions.add(attraction);
+        // 为景点初始化邻接表
+        roads.putIfAbsent(attraction.getId(), new HashMap<>());
+    }
+    
+    // 添加设施
+    public void addFacility(Facility facility) {
+        facilities.add(facility);
+        // 为设施初始化邻接表
+        roads.putIfAbsent(facility.getId(), new HashMap<>());
+    }
+    
+    // 添加道路
+    public void addRoad(int placeId1, int placeId2, Road road) {
+        // 双向道路
+        roads.get(placeId1).put(placeId2, road);
+        roads.get(placeId2).put(placeId1, road);
+    }
+    
+    // Getters
+    public int getId() {
+        return id;
+    }
+    
+    public String getName() {
+        return name;
+    }
+    
+    public String getType() {
+        return type;
+    }
+    
+    public String getDescription() {
+        return description;
+    }
+    
+    public Location getLocation() {
+        return location;
+    }
+    
+    public List<Attraction> getAttractions() {
+        return attractions;
+    }
+    
+    public List<Facility> getFacilities() {
+        return facilities;
+    }
+    
+    public Map<Integer, Map<Integer, Road>> getRoads() {
+        return roads;
+    }
+    
+    public double getRating() {
+        return rating;
+    }
+    
+    public void setRating(double rating) {
+        this.rating = rating;
+    }
+    
+    public int getVisitCount() {
+        return visitCount;
+    }
+    
+    public void incrementVisitCount() {
+        this.visitCount++;
+    }
+    
+    // 根据ID获取Place对象
+    public Place getPlaceById(int id) {
+        // 先在景点中查找
+        for (Attraction attraction : attractions) {
+            if (attraction.getId() == id) {
+                return attraction;
+            }
+        }
+        // 再在设施中查找
+        for (Facility facility : facilities) {
+            if (facility.getId() == id) {
+                return facility;
+            }
+        }
+        return null;
+    }
+}
+
+// 道路类
+public class Road {
+    private double distance; // 距离，单位米
+    private double congestionDegree; // 拥挤度，<=1的正数
+    private double idealSpeed; // 理想速度，单位米/秒
+    private Set<String> allowedTransports; // 允许的交通工具，如"步行"、"自行车"、"电瓶车"
+    
+    public Road(double distance, double congestionDegree, double idealSpeed, Set<String> allowedTransports) {
+        this.distance = distance;
+        this.congestionDegree = congestionDegree;
+        this.idealSpeed = idealSpeed;
+        this.allowedTransports = allowedTransports;
+    }
+    
+    // Getters
+    public double getDistance() {
+        return distance;
+    }
+    
+    public double getCongestionDegree() {
+        return congestionDegree;
+    }
+    
+    public void setCongestionDegree(double congestionDegree) {
+        this.congestionDegree = congestionDegree;
+    }
+    
+    public double getIdealSpeed() {
+        return idealSpeed;
+    }
+    
+    public Set<String> getAllowedTransports() {
+        return allowedTransports;
+    }
+    
+    // 计算实际速度
+    public double getActualSpeed() {
+        return congestionDegree * idealSpeed;
+    }
+    
+    // 计算通过该道路需要的时间
+    public double getTime() {
+        return distance / getActualSpeed();
+    }
+    
+    // 计算使用特定交通工具通过该道路需要的时间
+    public double getTime(String transport) {
+        if (!allowedTransports.contains(transport)) {
+            return Double.MAX_VALUE; // 不允许使用该交通工具
+        }
+        // 根据交通工具调整速度
+        double speed;
+        switch (transport) {
+            case "步行":
+                speed = 1.2 * congestionDegree; // 假设步行速度为1.2m/s
+                break;
+            case "自行车":
+                speed = 4.0 * congestionDegree; // 假设自行车速度为4.0m/s
+                break;
+            case "电瓶车":
+                speed = 5.0 * congestionDegree; // 假设电瓶车速度为5.0m/s
+                break;
+            default:
+                speed = idealSpeed * congestionDegree;
+        }
+        return distance / speed;
+    }
+}
+
+// 用户类
+public class User {
+    private int id;
+    private String username;
+    private String password;
+    private List<String> interests; // 用户兴趣列表
+    private List<TravelDiary> diaries; // 用户的旅游日记列表
+    private Map<Integer, Double> attractionRatings; // 用户对景点的评分
+    
+    public User(int id, String username, String password) {
+        this.id = id;
+        this.username = username;
+        this.password = password;
+        this.interests = new ArrayList<>();
+        this.diaries = new ArrayList<>();
+        this.attractionRatings = new HashMap<>();
+    }
+    
+    // Getters and setters
+    public int getId() {
+        return id;
+    }
+    
+    public String getUsername() {
+        return username;
+    }
+    
+    public String getPassword() {
+        return password;
+    }
+    
+    public List<String> getInterests() {
+        return interests;
+    }
+    
+    public void addInterest(String interest) {
+        this.interests.add(interest);
+    }
+    
+    public List<TravelDiary> getDiaries() {
+        return diaries;
+    }
+    
+    public void addDiary(TravelDiary diary) {
+        this.diaries.add(diary);
+    }
+    
+    public void rateAttraction(int attractionId, double rating) {
+        this.attractionRatings.put(attractionId, rating);
+    }
+    
+    public Map<Integer, Double> getAttractionRatings() {
+        return attractionRatings;
+    }
+}
+
+// 旅游日记类
+public class TravelDiary {
+    private int id;
+    private String title;
+    private String content;
+    private List<String> imageUrls; // 图片URL列表
+    private List<String> videoUrls; // 视频URL列表
+    private User author;
+    private TouristArea touristArea; // 关联的景区/校园
+    private Date creationDate;
+    private int viewCount; // 浏览量/热度
+    private List<DiaryRating> ratings; // 日记评分列表
+    private List<String> keywords; // 关键词列表，用于检索
+    
+    public TravelDiary(int id, String title, String content, User author, TouristArea touristArea) {
+        this.id = id;
+        this.title = title;
+        this.content = content;
+        this.author = author;
+        this.touristArea = touristArea;
+        this.imageUrls = new ArrayList<>();
+        this.videoUrls = new ArrayList<>();
+        this.creationDate = new Date();
+        this.viewCount = 0;
+        this.ratings = new ArrayList<>();
+        this.keywords = new ArrayList<>();
+    }
+    
+    // Getters and setters
+    public int getId() {
+        return id;
+    }
+    
+    public String getTitle() {
+        return title;
+    }
+    
+    public String getContent() {
+        return content;
+    }
+    
+    public User getAuthor() {
+        return author;
+    }
+    
+    public TouristArea getTouristArea() {
+        return touristArea;
+    }
+    
+    public Date getCreationDate() {
+        return creationDate;
+    }
+    
+    public List<String> getImageUrls() {
+        return imageUrls;
+    }
+    
+    public void addImageUrl(String imageUrl) {
+        this.imageUrls.add(imageUrl);
+    }
+    
+    public List<String> getVideoUrls() {
+        return videoUrls;
+    }
+    
+    public void addVideoUrl(String videoUrl) {
+        this.videoUrls.add(videoUrl);
+    }
+    
+    public int getViewCount() {
+        return viewCount;
+    }
+    
+    public void incrementViewCount() {
+        this.viewCount++;
+    }
+    
+    public List<DiaryRating> getRatings() {
+        return ratings;
+    }
+    
+    public void addRating(DiaryRating rating) {
+        this.ratings.add(rating);
+    }
+    
+    // 计算平均评分
+    public double getAverageRating() {
+        if (ratings.isEmpty()) {
+            return 0.0;
+        }
+        double sum = 0.0;
+        for (DiaryRating rating : ratings) {
+            sum += rating.getRating();
+        }
+        return sum / ratings.size();
+    }
+    
+    public List<String> getKeywords() {
+        return keywords;
+    }
+    
+    public void addKeyword(String keyword) {
+        this.keywords.add(keyword);
+    }
+}
+
+// 日记评分类
+public class DiaryRating {
+    private User user;
+    private double rating; // 评分，满分5分
+    private Date ratingDate;
+    
+    public DiaryRating(User user, double rating) {
+        this.user = user;
+        this.rating = rating;
+        this.ratingDate = new Date();
+    }
+    
+    public User getUser() {
+        return user;
+    }
+    
+    public double getRating() {
+        return rating;
+    }
+    
+    public Date getRatingDate() {
+        return ratingDate;
+    }
+}
+
+// 路径规划结果类
+public class RouteResult {
+    private List<Integer> placeIds; // 路径上的地点ID列表
+    private Map<Integer, String> transportModes; // 每段路使用的交通工具
+    private double totalDistance; // 总距离
+    private double totalTime; // 总时间
+    
+    public RouteResult() {
+        this.placeIds = new ArrayList<>();
+        this.transportModes = new HashMap<>();
+        this.totalDistance = 0.0;
+        this.totalTime = 0.0;
+    }
+    
+    // Getters and setters
+    public List<Integer> getPlaceIds() {
+        return placeIds;
+    }
+    
+    public void addPlaceId(int placeId) {
+        this.placeIds.add(placeId);
+    }
+    
+    public Map<Integer, String> getTransportModes() {
+        return transportModes;
+    }
+    
+    public void setTransportMode(int segmentIndex, String transportMode) {
+        this.transportModes.put(segmentIndex, transportMode);
+    }
+    
+    public double getTotalDistance() {
+        return totalDistance;
+    }
+    
+    public void setTotalDistance(double totalDistance) {
+        this.totalDistance = totalDistance;
+    }
+    
+    public double getTotalTime() {
+        return totalTime;
+    }
+    
+    public void setTotalTime(double totalTime) {
+        this.totalTime = totalTime;
+    }
+}
