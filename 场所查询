@@ -1,0 +1,344 @@
+package com.travel.service.algorithm;
+
+import com.travel.model.entity.Building;
+import com.travel.model.entity.Facility;
+import com.travel.model.entity.Road;
+import com.travel.model.entity.TravelSpot;
+
+import java.util.*;
+
+/**
+ * 场所查询算法
+ * 实现根据实际路径距离查询附近设施
+ */
+public class FacilitySearchAlgorithm {
+
+    /**
+     * 查询起点附近指定范围内的设施
+     * 
+     * @param spot 景区/校园
+     * @param startPoint 起点位置(建筑物)
+     * @param maxDistance 最大距离范围
+     * @param facilityType 设施类型(可为null，表示查询所有类型)
+     * @return 按距离排序的设施列表，每个元素包含设施和到起点的距离
+     */
+    public List<FacilityDistance> searchNearbyFacilities(
+            TravelSpot spot, 
+            Building startPoint, 
+            double maxDistance,
+            String facilityType) {
+        
+        // 构建邻接图
+        Map<Building, List<Road>> graph = buildGraph(spot);
+        
+        // 使用Dijkstra算法计算从起点到所有可达点的最短距离
+        Map<Building, Double> distances = new HashMap<>();
+        Map<Building, List<Road>> paths = new HashMap<>();
+        
+        // 初始化距离
+        for (Building building : spot.getBuildings()) {
+            distances.put(building, Double.MAX_VALUE);
+        }
+        distances.put(startPoint, 0.0);
+        paths.put(startPoint, new ArrayList<>());
+        
+        // 优先队列
+        PriorityQueue<BuildingDistance> queue = new PriorityQueue<>(
+            Comparator.comparingDouble(BuildingDistance::getDistance)
+        );
+        queue.offer(new BuildingDistance(startPoint, 0.0));
+        
+        // 已处理的节点
+        Set<Building> processed = new HashSet<>();
+        
+        // Dijkstra算法主循环
+        while (!queue.isEmpty()) {
+            BuildingDistance current = queue.poll();
+            Building currentBuilding = current.getBuilding();
+            
+            // 已处理则跳过
+            if (processed.contains(currentBuilding)) {
+                continue;
+            }
+            
+            processed.add(currentBuilding);
+            
+            // 如果当前距离已超过最大范围，跳过
+            if (current.getDistance() > maxDistance) {
+                continue;
+            }
+            
+            // 处理所有邻接点
+            if (graph.containsKey(currentBuilding)) {
+                for (Road road : graph.get(currentBuilding)) {
+                    Building nextBuilding = road.getEndBuilding();
+                    double newDistance = current.getDistance() + road.getDistance();
+                    
+                    // 如果找到更短的路径
+                    if (newDistance < distances.get(nextBuilding)) {
+                        distances.put(nextBuilding, newDistance);
+                        
+                        // 更新路径
+                        List<Road> newPath = new ArrayList<>(paths.get(currentBuilding));
+                        newPath.add(road);
+                        paths.put(nextBuilding, newPath);
+                        
+                        // 加入队列
+                        queue.offer(new BuildingDistance(nextBuilding, newDistance));
+                    }
+                }
+            }
+        }
+        
+        // 查找所有在范围内的设施
+        List<FacilityDistance> results = new ArrayList<>();
+        
+        for (Facility facility : spot.getFacilities()) {
+            // 如果指定了类型，但不匹配，则跳过
+            if (facilityType != null && !facilityType.equals(facility.getType())) {
+                continue;
+            }
+            
+            // 找出最近的建筑物
+            Building nearestBuilding = findNearestBuilding(facility, spot.getBuildings());
+            
+            // 如果该建筑物可达，且距离在范围内
+            if (distances.containsKey(nearestBuilding) && 
+                distances.get(nearestBuilding) <= maxDistance) {
+                
+                // 计算总距离 = 起点到最近建筑物的距离 + 最近建筑物到设施的距离
+                double totalDistance = distances.get(nearestBuilding) + 
+                                       calculateDistance(nearestBuilding, facility);
+                
+                if (totalDistance <= maxDistance) {
+                    List<Road> path = paths.get(nearestBuilding);
+                    results.add(new FacilityDistance(facility, totalDistance, path));
+                }
+            }
+        }
+        
+        // 按距离排序
+        results.sort(Comparator.comparingDouble(FacilityDistance::getDistance));
+        
+        return results;
+    }
+    
+    /**
+     * 查找特定类型的附近设施
+     * 
+     * @param spot 景区/校园
+     * @param startPoint 起点位置(建筑物)
+     * @param keyword 类型关键字
+     * @param maxDistance 最大距离范围
+     * @return 按距离排序的设施列表
+     */
+    public List<FacilityDistance> searchByKeyword(
+            TravelSpot spot, 
+            Building startPoint, 
+            String keyword,
+            double maxDistance) {
+        
+        // 使用Trie树实现高效字符串匹配
+        TrieTree trieTree = new TrieTree();
+        
+        // 获取所有设施类型
+        Set<String> facilityTypes = new HashSet<>();
+        for (Facility facility : spot.getFacilities()) {
+            facilityTypes.add(facility.getType().toLowerCase());
+        }
+        
+        // 将所有类型加入Trie树
+        for (String type : facilityTypes) {
+            trieTree.insert(type);
+        }
+        
+        // 查找匹配的类型
+        List<String> matchedTypes = trieTree.searchByPrefix(keyword.toLowerCase());
+        
+        // 如果没有匹配项，使用模糊匹配
+        if (matchedTypes.isEmpty()) {
+            for (String type : facilityTypes) {
+                if (type.contains(keyword.toLowerCase())) {
+                    matchedTypes.add(type);
+                }
+            }
+        }
+        
+        // 查找所有匹配类型的设施
+        List<FacilityDistance> results = new ArrayList<>();
+        for (String type : matchedTypes) {
+            results.addAll(searchNearbyFacilities(spot, startPoint, maxDistance, type));
+        }
+        
+        // 按距离排序
+        results.sort(Comparator.comparingDouble(FacilityDistance::getDistance));
+        
+        return results;
+    }
+    
+    /**
+     * 构建邻接图
+     */
+    private Map<Building, List<Road>> buildGraph(TravelSpot spot) {
+        Map<Building, List<Road>> graph = new HashMap<>();
+        
+        // 初始化图
+        for (Building building : spot.getBuildings()) {
+            graph.put(building, new ArrayList<>());
+        }
+        
+        // 添加边
+        for (Road road : spot.getRoads()) {
+            graph.get(road.getStartBuilding()).add(road);
+            
+            // 如果是双向道路，添加反向边
+            Road reverseRoad = new Road();
+            reverseRoad.setId(road.getId());
+            reverseRoad.setStartBuilding(road.getEndBuilding());
+            reverseRoad.setEndBuilding(road.getStartBuilding());
+            reverseRoad.setDistance(road.getDistance());
+            reverseRoad.setCongestion(road.getCongestion());
+            reverseRoad.setIdealSpeed(road.getIdealSpeed());
+            reverseRoad.setAllowBike(road.isAllowBike());
+            reverseRoad.setAllowCar(road.isAllowCar());
+            
+            graph.get(road.getEndBuilding()).add(reverseRoad);
+        }
+        
+        return graph;
+    }
+    
+    /**
+     * 查找离设施最近的建筑物
+     */
+    private Building findNearestBuilding(Facility facility, List<Building> buildings) {
+        Building nearest = null;
+        double minDistance = Double.MAX_VALUE;
+        
+        for (Building building : buildings) {
+            double distance = calculateDistance(building, facility);
+            if (distance < minDistance) {
+                minDistance = distance;
+                nearest = building;
+            }
+        }
+        
+        return nearest;
+    }
+    
+    /**
+     * 计算建筑物与设施之间的距离
+     */
+    private double calculateDistance(Building building, Facility facility) {
+        // 使用欧几里得距离计算
+        double dx = building.getX() - facility.getX();
+        double dy = building.getY() - facility.getY();
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    /**
+     * 建筑物距离类
+     */
+    private static class BuildingDistance {
+        private Building building;
+        private double distance;
+        
+        public BuildingDistance(Building building, double distance) {
+            this.building = building;
+            this.distance = distance;
+        }
+        
+        public Building getBuilding() {
+            return building;
+        }
+        
+        public double getDistance() {
+            return distance;
+        }
+    }
+    
+    /**
+     * 设施距离结果类
+     */
+    public static class FacilityDistance {
+        private Facility facility;
+        private double distance;
+        private List<Road> path;
+        
+        public FacilityDistance(Facility facility, double distance, List<Road> path) {
+            this.facility = facility;
+            this.distance = distance;
+            this.path = path;
+        }
+        
+        public Facility getFacility() {
+            return facility;
+        }
+        
+        public double getDistance() {
+            return distance;
+        }
+        
+        public List<Road> getPath() {
+            return path;
+        }
+    }
+    
+    /**
+     * Trie树实现，用于高效字符串前缀匹配
+     */
+    private static class TrieTree {
+        private TrieNode root;
+        
+        public TrieTree() {
+            this.root = new TrieNode();
+        }
+        
+        // 插入字符串
+        public void insert(String word) {
+            TrieNode current = root;
+            for (char c : word.toCharArray()) {
+                current.children.putIfAbsent(c, new TrieNode());
+                current = current.children.get(c);
+            }
+            current.isEndOfWord = true;
+            current.word = word;
+        }
+        
+        // 查找前缀匹配的所有字符串
+        public List<String> searchByPrefix(String prefix) {
+            List<String> results = new ArrayList<>();
+            TrieNode current = root;
+            
+            // 定位到前缀的最后一个字符
+            for (char c : prefix.toCharArray()) {
+                if (!current.children.containsKey(c)) {
+                    return results; // 前缀不存在
+                }
+                current = current.children.get(c);
+            }
+            
+            // 收集所有以该前缀开始的单词
+            collectWords(current, results);
+            
+            return results;
+        }
+        
+        // 递归收集所有单词
+        private void collectWords(TrieNode node, List<String> results) {
+            if (node.isEndOfWord) {
+                results.add(node.word);
+            }
+            
+            for (TrieNode child : node.children.values()) {
+                collectWords(child, results);
+            }
+        }
+        
+        private static class TrieNode {
+            Map<Character, TrieNode> children = new HashMap<>();
+            boolean isEndOfWord;
+            String word;
+        }
+    }
+}
