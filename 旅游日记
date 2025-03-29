@@ -1,0 +1,309 @@
+package com.travel.service.algorithm;
+
+import com.travel.model.entity.TravelDiary;
+import com.travel.model.entity.User;
+
+import java.util.*;
+
+/**
+ * 旅游日记推荐算法
+ * 实现基于热度、评分和个人兴趣的推荐
+ */
+public class DiaryRecommendationAlgorithm {
+
+    /**
+     * 基于热度和评分的排序算法
+     * 使用堆排序实现高效排序
+     * 
+     * @param diaries 待排序的旅游日记列表
+     * @param byHotness 是否按热度排序，否则按评分排序
+     * @return 排序后的旅游日记列表
+     */
+    public List<TravelDiary> sortDiaries(List<TravelDiary> diaries, boolean byHotness) {
+        // 创建结果列表的副本
+        List<TravelDiary> result = new ArrayList<>(diaries);
+        
+        // 使用堆排序
+        heapSort(result, byHotness);
+        
+        return result;
+    }
+    
+    /**
+     * 堆排序实现
+     */
+    private void heapSort(List<TravelDiary> diaries, boolean byHotness) {
+        int n = diaries.size();
+        
+        // 构建大顶堆
+        for (int i = n / 2 - 1; i >= 0; i--) {
+            heapify(diaries, n, i, byHotness);
+        }
+        
+        // 逐个从堆顶取出元素
+        for (int i = n - 1; i > 0; i--) {
+            // 将当前堆顶(最大值)与末尾元素交换
+            Collections.swap(diaries, 0, i);
+            
+            // 重新调整堆
+            heapify(diaries, i, 0, byHotness);
+        }
+    }
+    
+    /**
+     * 调整堆结构
+     */
+    private void heapify(List<TravelDiary> diaries, int n, int i, boolean byHotness) {
+        int largest = i;     // 初始化最大值为根节点
+        int left = 2 * i + 1;  // 左子节点
+        int right = 2 * i + 2; // 右子节点
+        
+        // 如果左子节点大于根节点
+        if (left < n && compare(diaries.get(left), diaries.get(largest), byHotness) > 0) {
+            largest = left;
+        }
+        
+        // 如果右子节点大于当前最大值
+        if (right < n && compare(diaries.get(right), diaries.get(largest), byHotness) > 0) {
+            largest = right;
+        }
+        
+        // 如果最大值不是根节点
+        if (largest != i) {
+            Collections.swap(diaries, i, largest);
+            
+            // 递归调整被影响的子树
+            heapify(diaries, n, largest, byHotness);
+        }
+    }
+    
+    /**
+     * 比较两个日记的大小
+     * 根据排序标准(热度或评分)比较
+     */
+    private int compare(TravelDiary a, TravelDiary b, boolean byHotness) {
+        if (byHotness) {
+            return Integer.compare(a.getViews(), b.getViews());
+        } else {
+            return Double.compare(a.getRating(), b.getRating());
+        }
+    }
+    
+    /**
+     * 组合排序算法
+     * 综合考虑热度、评分和时间因素
+     * 
+     * @param diaries 日记列表
+     * @param hotnessWeight 热度权重(0-1)
+     * @param ratingWeight 评分权重(0-1)
+     * @return 排序后的日记列表
+     */
+    public List<TravelDiary> combinedSort(List<TravelDiary> diaries, 
+                                        double hotnessWeight, 
+                                        double ratingWeight) {
+        // 验证权重和为1
+        double sum = hotnessWeight + ratingWeight;
+        if (Math.abs(sum - 1.0) > 0.001) {
+            // 如果权重和不为1，进行归一化
+            hotnessWeight /= sum;
+            ratingWeight /= sum;
+        }
+        
+        // 找出最大热度和评分，用于归一化
+        int maxHotness = 1;
+        double maxRating = 1.0;
+        
+        for (TravelDiary diary : diaries) {
+            maxHotness = Math.max(maxHotness, diary.getViews());
+            maxRating = Math.max(maxRating, diary.getRating());
+        }
+        
+        // 计算每个日记的综合得分
+        final Map<TravelDiary, Double> scoreMap = new HashMap<>();
+        
+        for (TravelDiary diary : diaries) {
+            // 归一化各指标
+            double normalizedHotness = (double) diary.getViews() / maxHotness;
+            double normalizedRating = diary.getRating() / maxRating;
+            
+            // 计算综合得分
+            double score = hotnessWeight * normalizedHotness + 
+                          ratingWeight * normalizedRating;
+            
+            scoreMap.put(diary, score);
+        }
+        
+        // 复制列表进行排序
+        List<TravelDiary> result = new ArrayList<>(diaries);
+        
+        // 根据综合得分排序
+        result.sort((d1, d2) -> Double.compare(scoreMap.get(d2), scoreMap.get(d1)));
+        
+        return result;
+    }
+    
+    /**
+     * 基于用户兴趣的个性化推荐算法
+     * 
+     * @param diaries 全部日记
+     * @param user 当前用户
+     * @param interestWeight 兴趣匹配度权重(0-1)
+     * @param hotnessWeight 热度权重(0-1)
+     * @param ratingWeight 评分权重(0-1)
+     * @return 推荐的日记列表
+     */
+    public List<TravelDiary> personalizedRecommendation(
+            List<TravelDiary> diaries, 
+            User user,
+            double interestWeight,
+            double hotnessWeight,
+            double ratingWeight) {
+        
+        // 验证权重和为1
+        double sum = interestWeight + hotnessWeight + ratingWeight;
+        if (Math.abs(sum - 1.0) > 0.001) {
+            // 归一化
+            interestWeight /= sum;
+            hotnessWeight /= sum;
+            ratingWeight /= sum;
+        }
+        
+        // 获取用户兴趣
+        Set<String> userInterests = user.getInterests();
+        
+        // 找出最大热度和评分，用于归一化
+        int maxHotness = 1;
+        double maxRating = 1.0;
+        
+        for (TravelDiary diary : diaries) {
+            maxHotness = Math.max(maxHotness, diary.getViews());
+            maxRating = Math.max(maxRating, diary.getRating());
+        }
+        
+        // 计算每个日记的综合得分
+        final Map<TravelDiary, Double> scoreMap = new HashMap<>();
+        
+        for (TravelDiary diary : diaries) {
+            // 归一化各指标
+            double normalizedHotness = (double) diary.getViews() / maxHotness;
+            double normalizedRating = diary.getRating() / maxRating;
+            
+            // 计算兴趣匹配度
+            double interestScore = calculateInterestScore(diary, userInterests);
+            
+            // 计算综合得分
+            double score = interestWeight * interestScore + 
+                          hotnessWeight * normalizedHotness + 
+                          ratingWeight * normalizedRating;
+            
+            scoreMap.put(diary, score);
+        }
+        
+        // 复制列表进行排序
+        List<TravelDiary> result = new ArrayList<>(diaries);
+        
+        // 根据综合得分排序
+        result.sort((d1, d2) -> Double.compare(scoreMap.get(d2), scoreMap.get(d1)));
+        
+        return result;
+    }
+    
+    /**
+     * 计算日记与用户兴趣的匹配度
+     */
+    private double calculateInterestScore(TravelDiary diary, Set<String> userInterests) {
+        if (userInterests == null || userInterests.isEmpty()) {
+            return 0.5; // 默认中等兴趣匹配度
+        }
+        
+        int matchCount = 0;
+        for (String interest : userInterests) {
+            // 检查标题和内容是否包含兴趣关键词
+            if (diary.getTitle().toLowerCase().contains(interest.toLowerCase()) || 
+                diary.getContent().toLowerCase().contains(interest.toLowerCase())) {
+                matchCount++;
+            }
+            
+            // 检查关联景点是否匹配用户兴趣
+            if (diary.getSpot() != null && 
+                (diary.getSpot().getName().toLowerCase().contains(interest.toLowerCase()) || 
+                 diary.getSpot().getType().toLowerCase().contains(interest.toLowerCase()))) {
+                matchCount++;
+            }
+        }
+        
+        // 计算匹配度(0-1)
+        return (double) matchCount / (userInterests.size() * 2);
+    }
+    
+    /**
+     * 按目的地查找并排序日记
+     * 
+     * @param diaries 全部日记
+     * @param destinationName 目的地名称
+     * @param byHotness 是否按热度排序
+     * @return 匹配的日记列表
+     */
+    public List<TravelDiary> findByDestination(
+            List<TravelDiary> diaries, 
+            String destinationName,
+            boolean byHotness) {
+        
+        if (destinationName == null || destinationName.isEmpty()) {
+            return new ArrayList<>(diaries);
+        }
+        
+        // 筛选匹配目的地的日记
+        List<TravelDiary> result = new ArrayList<>();
+        for (TravelDiary diary : diaries) {
+            if (diary.getSpot() != null && 
+                diary.getSpot().getName().toLowerCase().contains(destinationName.toLowerCase())) {
+                result.add(diary);
+            }
+        }
+        
+        // 排序
+        if (byHotness) {
+            result.sort((d1, d2) -> Integer.compare(d2.getViews(), d1.getViews()));
+        } else {
+            result.sort((d1, d2) -> Double.compare(d2.getRating(), d1.getRating()));
+        }
+        
+        return result;
+    }
+    
+    /**
+     * 精确查找日记
+     * 使用二分查找实现高效查找(前提是列表已按标题排序)
+     * 
+     * @param diaries 已按标题排序的日记列表
+     * @param title 日记标题
+     * @return 匹配的日记或null
+     */
+    public TravelDiary findByExactTitle(List<TravelDiary> diaries, String title) {
+        // 确保列表已按标题排序
+        List<TravelDiary> sortedDiaries = new ArrayList<>(diaries);
+        sortedDiaries.sort(Comparator.comparing(TravelDiary::getTitle));
+        
+        // 二分查找
+        int left = 0;
+        int right = sortedDiaries.size() - 1;
+        
+        while (left <= right) {
+            int mid = left + (right - left) / 2;
+            String midTitle = sortedDiaries.get(mid).getTitle();
+            
+            int comparison = midTitle.compareTo(title);
+            
+            if (comparison == 0) {
+                return sortedDiaries.get(mid);
+            } else if (comparison < 0) {
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
+        }
+        
+        return null; // 未找到匹配的日记
+    }
+}
